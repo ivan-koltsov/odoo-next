@@ -8,6 +8,12 @@ describe("odoo image helpers", () => {
     );
   });
 
+  it("throws when getOdooImageUrl receives a non-positive or non-integer ID", () => {
+    expect(() => getOdooImageUrl("product.product", 0)).toThrow(/Invalid record ID/);
+    expect(() => getOdooImageUrl("product.product", -4)).toThrow(/Invalid record ID/);
+    expect(() => getOdooImageUrl("product.product", 1.5)).toThrow(/Invalid record ID/);
+  });
+
   it("validates allowlisted model, positive integer id, and field", () => {
     expect(
       validateImageParams({ model: "product.product", id: "42", field: "image_128" })
@@ -18,15 +24,15 @@ describe("odoo image helpers", () => {
     });
 
     expect(
-      validateImageParams({ model: "product.product", id: "42", field: null })
+      validateImageParams({ model: "res.partner", id: "42", field: null })
     ).toEqual({
-      model: "product.product",
+      model: "res.partner",
       id: 42,
       field: "image_256",
     });
   });
 
-  it("rejects non-allowlisted models, fields, and invalid IDs", () => {
+  it("rejects non-allowlisted models, fields, and invalid or partial-numeric IDs", () => {
     expect(
       validateImageParams({ model: "ir.attachment", id: "1", field: "image_256" })
     ).toBeNull();
@@ -35,6 +41,15 @@ describe("odoo image helpers", () => {
     ).toBeNull();
     expect(
       validateImageParams({ model: "product.product", id: "-5", field: "image_256" })
+    ).toBeNull();
+    expect(
+      validateImageParams({ model: "product.product", id: "0", field: "image_256" })
+    ).toBeNull();
+    expect(
+      validateImageParams({ model: "product.product", id: "42abc", field: "image_256" })
+    ).toBeNull();
+    expect(
+      validateImageParams({ model: "product.product", id: "3.14", field: "image_256" })
     ).toBeNull();
     expect(
       validateImageParams({ model: "product.product", id: "abc", field: "image_256" })

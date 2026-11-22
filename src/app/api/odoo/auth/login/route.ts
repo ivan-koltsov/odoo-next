@@ -1,14 +1,8 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { odooAuthenticate } from "@/lib/odoo/client";
 import { setSessionCookie } from "@/lib/odoo/session";
 import { toApiErrorResponse } from "@/lib/odoo/errors";
-
-const loginSchema = z.object({
-  login: z.string().trim().min(1, "Username or email is required"),
-  password: z.string().min(1, "Password is required"),
-  db: z.string().trim().optional(),
-});
+import { formatZodError, loginSchema } from "@/lib/odoo/validation";
 
 export async function POST(request: Request) {
   try {
@@ -17,10 +11,7 @@ export async function POST(request: Request) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        {
-          error: parsed.error.issues[0]?.message || "Invalid login payload",
-          code: "INVALID_REQUEST",
-        },
+        formatZodError(parsed.error, "Invalid login payload"),
         { status: 400 }
       );
     }

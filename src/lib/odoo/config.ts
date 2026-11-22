@@ -1,3 +1,5 @@
+import { odooConfigSchema } from "./validation";
+
 export interface OdooConfig {
   baseUrl: string;
   db: string;
@@ -7,17 +9,23 @@ export interface OdooConfig {
 
 export function getOdooConfig(): OdooConfig {
   const rawBaseUrl = process.env.ODOO_BASE_URL?.trim() || "http://localhost:8069";
-  const baseUrl = rawBaseUrl.replace(/\/+$/, "");
   const db = process.env.ODOO_DB?.trim() || "odoo";
-  const parsedTimeout = Number.parseInt(process.env.ODOO_TIMEOUT_MS ?? "", 10);
-  const timeoutMs = Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 15_000;
+  const rawTimeout = process.env.ODOO_TIMEOUT_MS?.trim();
+  const parsedTimeout = rawTimeout ? Number(rawTimeout) : 15_000;
   const sessionCookieName =
     process.env.ODOO_SESSION_COOKIE_NAME?.trim() || "odoo_session_id";
 
-  return {
-    baseUrl,
+  const parsed = odooConfigSchema.safeParse({
+    baseUrl: rawBaseUrl,
     db,
-    timeoutMs,
+    timeoutMs: parsedTimeout,
     sessionCookieName,
-  };
+  });
+
+  if (!parsed.success) {
+    const details = parsed.error.issues.map((issue) => issue.message).join("; ");
+    throw new Error(`Invalid Odoo configuration: ${details}`);
+  }
+
+  return parsed.data;
 }

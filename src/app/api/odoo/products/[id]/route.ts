@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { clearSessionCookie, getSessionId } from "@/lib/odoo/session";
 import { isOdooSessionExpiredError, toApiErrorResponse } from "@/lib/odoo/errors";
 import { getProductById } from "@/lib/odoo/services/products";
+import { formatZodError, positiveIntIdSchema } from "@/lib/odoo/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -18,16 +19,16 @@ export async function GET(
   }
 
   const { id: rawId } = await context.params;
-  const id = Number.parseInt(rawId, 10);
-  if (!Number.isInteger(id) || id <= 0) {
+  const parsedId = positiveIntIdSchema.safeParse(rawId);
+  if (!parsedId.success) {
     return NextResponse.json(
-      { error: "Invalid product ID", code: "INVALID_REQUEST" },
+      formatZodError(parsedId.error, "Invalid product ID"),
       { status: 400 }
     );
   }
 
   try {
-    const product = await getProductById(sessionId, id);
+    const product = await getProductById(sessionId, parsedId.data);
     if (!product) {
       return NextResponse.json(
         { error: "Product not found", code: "NOT_FOUND" },

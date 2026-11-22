@@ -23,6 +23,8 @@ export interface ValidatedImageParams {
   field: AllowedImageField;
 }
 
+const STRICT_POSITIVE_INT_RE = /^[1-9]\d*$/;
+
 export function isAllowedImageModel(value: string): value is AllowedImageModel {
   return (ALLOWED_IMAGE_MODELS as readonly string[]).includes(value);
 }
@@ -38,7 +40,7 @@ export function validateImageParams(params: {
 }): ValidatedImageParams | null {
   const model = params.model?.trim() ?? "";
   const field = params.field?.trim() || "image_256";
-  const id = Number.parseInt(params.id ?? "", 10);
+  const rawId = params.id?.trim() ?? "";
 
   if (!isAllowedImageModel(model)) {
     return null;
@@ -46,7 +48,12 @@ export function validateImageParams(params: {
   if (!isAllowedImageField(field)) {
     return null;
   }
-  if (!Number.isInteger(id) || id <= 0) {
+  if (!STRICT_POSITIVE_INT_RE.test(rawId)) {
+    return null;
+  }
+
+  const id = Number.parseInt(rawId, 10);
+  if (!Number.isSafeInteger(id) || id <= 0) {
     return null;
   }
 
@@ -61,6 +68,9 @@ export function getOdooImageUrl(
   id: number,
   field: AllowedImageField = "image_256"
 ): string {
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error(`Invalid record ID for Odoo image URL: ${id}`);
+  }
   const query = new URLSearchParams({
     model,
     id: String(id),

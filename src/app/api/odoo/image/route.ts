@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getOdooConfig } from "@/lib/odoo/config";
-import { validateImageParams } from "@/lib/odoo/images";
 import { getSessionId } from "@/lib/odoo/session";
+import { formatZodError, imageQuerySchema } from "@/lib/odoo/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -15,19 +15,20 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const validated = validateImageParams({
-    model: searchParams.get("model"),
-    id: searchParams.get("id"),
-    field: searchParams.get("field"),
+  const parsed = imageQuerySchema.safeParse({
+    model: searchParams.get("model") ?? "",
+    id: searchParams.get("id") ?? "",
+    field: searchParams.get("field") ?? undefined,
   });
 
-  if (!validated) {
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "Invalid image parameters", code: "INVALID_REQUEST" },
+      formatZodError(parsed.error, "Invalid image parameters"),
       { status: 400 }
     );
   }
 
+  const validated = parsed.data;
   const { baseUrl, timeoutMs } = getOdooConfig();
   const odooImageUrl = `${baseUrl}/web/image?model=${encodeURIComponent(
     validated.model

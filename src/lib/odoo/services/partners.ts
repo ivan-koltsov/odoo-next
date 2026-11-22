@@ -1,5 +1,10 @@
 import { odooCall, type OdooRpcOptions } from "../client";
 import type { OdooDomain, OdooPartner, PaginatedResult } from "../types";
+import {
+  createPartnerSchema,
+  positiveIntIdSchema,
+  updatePartnerSchema,
+} from "../validation";
 
 export const PARTNER_LIST_FIELDS = [
   "id",
@@ -82,19 +87,20 @@ export async function createPartner(
   input: CreatePartnerInput,
   rpcOptions: Omit<OdooRpcOptions, "sessionId"> = {}
 ): Promise<number> {
+  const validated = createPartnerSchema.parse(input);
   const payload: Record<string, unknown> = {
-    name: input.name.trim(),
-    is_company: Boolean(input.is_company),
+    name: validated.name,
+    is_company: validated.is_company,
   };
 
-  if (input.email?.trim()) {
-    payload.email = input.email.trim();
+  if (validated.email) {
+    payload.email = validated.email;
   }
-  if (input.phone?.trim()) {
-    payload.phone = input.phone.trim();
+  if (validated.phone) {
+    payload.phone = validated.phone;
   }
-  if (input.city?.trim()) {
-    payload.city = input.city.trim();
+  if (validated.city) {
+    payload.city = validated.city;
   }
 
   return odooCall<number>(
@@ -112,10 +118,20 @@ export async function updatePartner(
   input: Partial<CreatePartnerInput>,
   rpcOptions: Omit<OdooRpcOptions, "sessionId"> = {}
 ): Promise<boolean> {
+  const validatedId = positiveIntIdSchema.parse(id);
+  const validated = updatePartnerSchema.parse(input);
+
+  const payload: Record<string, unknown> = {};
+  if (validated.name !== undefined) payload.name = validated.name;
+  if (validated.email !== undefined) payload.email = validated.email || false;
+  if (validated.phone !== undefined) payload.phone = validated.phone || false;
+  if (validated.city !== undefined) payload.city = validated.city || false;
+  if (validated.is_company !== undefined) payload.is_company = validated.is_company;
+
   return odooCall<boolean>(
     "res.partner",
     "write",
-    [[id], input],
+    [[validatedId], payload],
     {},
     { ...rpcOptions, sessionId }
   );

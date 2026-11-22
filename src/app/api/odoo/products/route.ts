@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { clearSessionCookie, getSessionId } from "@/lib/odoo/session";
 import { isOdooSessionExpiredError, toApiErrorResponse } from "@/lib/odoo/errors";
 import { listProducts } from "@/lib/odoo/services/products";
+import { formatZodError, productListQuerySchema } from "@/lib/odoo/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -16,22 +17,21 @@ export async function GET(request: Request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const search = searchParams.get("search") ?? undefined;
-    const categoryIdParam = searchParams.get("categoryId");
-    const limitParam = searchParams.get("limit");
-    const offsetParam = searchParams.get("offset");
-
-    const categoryId = categoryIdParam ? Number.parseInt(categoryIdParam, 10) : undefined;
-    const limit = limitParam ? Number.parseInt(limitParam, 10) : 20;
-    const offset = offsetParam ? Number.parseInt(offsetParam, 10) : 0;
-
-    const result = await listProducts(sessionId, {
-      search,
-      categoryId: Number.isFinite(categoryId) ? categoryId : undefined,
-      limit: Number.isFinite(limit) ? limit : 20,
-      offset: Number.isFinite(offset) ? offset : 0,
+    const parsed = productListQuerySchema.safeParse({
+      search: searchParams.get("search") ?? undefined,
+      categoryId: searchParams.get("categoryId") ?? undefined,
+      limit: searchParams.get("limit") ?? undefined,
+      offset: searchParams.get("offset") ?? undefined,
     });
 
+    if (!parsed.success) {
+      return NextResponse.json(
+        formatZodError(parsed.error, "Invalid product query parameters"),
+        { status: 400 }
+      );
+    }
+
+    const result = await listProducts(sessionId, parsed.data);
     return NextResponse.json(result);
   } catch (error) {
     if (isOdooSessionExpiredError(error)) {

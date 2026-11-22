@@ -4,7 +4,9 @@ import {
   normalizeSessionUser,
   odooAuthenticate,
   odooCall,
+  odooDestroySession,
   odooGetSessionInfo,
+  odooGetVersionInfo,
   odooRpc,
 } from "@/lib/odoo/client";
 import {
@@ -30,7 +32,8 @@ function createJsonResponse(
 describe("extractSessionIdFromHeaders", () => {
   it("extracts session_id from Set-Cookie header", () => {
     const headers = new Headers({
-      "set-cookie": "session_id=abc123xyz; Expires=Wed, 21 Oct 2027 07:28:00 GMT; Path=/; HttpOnly",
+      "set-cookie":
+        "session_id=abc123xyz; Expires=Wed, 21 Oct 2027 07:28:00 GMT; Path=/; HttpOnly",
     });
     expect(extractSessionIdFromHeaders(headers)).toBe("abc123xyz");
   });
@@ -68,8 +71,29 @@ describe("normalizeSessionUser", () => {
     });
   });
 
-  it("returns null when uid is false", () => {
+  it("handles minimal payloads with fallback company_id and default display name", () => {
+    const user = normalizeSessionUser({
+      uid: 9,
+      company_id: 4,
+      partner_id: false,
+    });
+
+    expect(user).toEqual({
+      uid: 9,
+      name: "User #9",
+      username: "",
+      db: "odoo",
+      partnerId: null,
+      companyId: 4,
+      serverVersion: null,
+      isAdmin: false,
+      isSystem: false,
+    });
+  });
+
+  it("returns null when uid is false or nullish", () => {
     expect(normalizeSessionUser({ uid: false })).toBeNull();
+    expect(normalizeSessionUser(null)).toBeNull();
   });
 });
 
@@ -148,16 +172,38 @@ describe("odooRpc and odooCall", () => {
     }
   });
 
-  it("throws OdooConnectionError when fetch rejects", async () => {
-    const mockFetch = vi.fn<typeof fetch>().mockRejectedValueOnce(new Error("ECONNREFUSED"));
-
+  it("throws OdooConnectionError on network error, timeout AbortError, non-200 HTTP, or non-JSON body", async () => {
+    const networkMock = vi
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(new Error("ECONNREFUSED"));
     await expect(
-      odooRpc("/web/webclient/version_info", {}, { fetchImpl: mockFetch })
+      odooRpc("/web/webclient/version_info", {}, { fetchImpl: networkMock })
     ).rejects.toBeInstanceOf(OdooConnectionError);
+
+    const abortErr = new Error("aborted");
+    abortErr.name = "AbortError";
+    const timeoutMock = vi.fn<typeof fetch>().mockRejectedValueOnce(abortErr);
+    await expect(
+      odooRpc("/web/webclient/version_info", {}, { timeoutMs: 250, fetchImpl: timeoutMock })
+    ).rejects.toThrow(/timed out after 250ms/);
+
+    const http502Mock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response("Bad Gateway", { status: 502, statusText: "Bad Gateway" }));
+    await expect(
+      odooRpc("/web/webclient/version_info", {}, { fetchImpl: http502Mock })
+    ).rejects.toThrow(/HTTP 502/);
+
+    const nonJsonMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response("<html>error</html>", { status: 200 }));
+    await expect(
+      odooRpc("/web/webclient/version_info", {}, { fetchImpl: nonJsonMock })
+    ).rejects.toThrow(/non-JSON response/);
   });
 });
 
-describe("odooAuthenticate and odooGetSessionInfo", () => {
+describe("odooAuthenticate, session info, destroy, and version info", () => {
   it("authenticates and extracts both user and sessionId", async () => {
     const mockFetch = vi.fn<typeof fetch>().mockResolvedValueOnce(
       createJsonResponse(
@@ -190,21 +236,23 @@ describe("odooAuthenticate and odooGetSessionInfo", () => {
     expect(auth.user.db).toBe("demo");
   });
 
-  it("throws OdooAuthError when uid is false", async () => {
-    const mockFetch = vi.fn<typeof fetch>().mockResolvedValueOnce(
-      createJsonResponse({
-        jsonrpc: "2.0",
-        id: 1,
-        result: { uid: false },
-      })
+  it("throws OdooAuthError when uid is false or session_id cookie is missing", async () => {
+    const badCredsFetch = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      createJsonResponse({ jsonrpc: "2.0", id: 1, result: { uid: false } })
     );
+    await expect(
+      odooAuthenticate({ login: "admin", password: "wrong", db: "demo" }, { fetchImpl: badCredsFetch })
+    ).rejects.toBeInstanceOf(OdooAuthError);
 
+    const missingCookieFetch = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      createJsonResponse({ jsonrpc: "2.0", id: 1, result: { uid: 2, name: "Admin" } })
+    );
     await expect(
       odooAuthenticate(
-        { login: "admin", password: "wrong", db: "demo" },
-        { fetchImpl: mockFetch }
+        { login: "admin", password: "secret", db: "demo" },
+        { fetchImpl: missingCookieFetch }
       )
-    ).rejects.toBeInstanceOf(OdooAuthError);
+    ).rejects.toThrow(/did not return a session_id cookie/);
   });
 
   it("returns null from odooGetSessionInfo on expired session", async () => {
@@ -222,5 +270,24 @@ describe("odooAuthenticate and odooGetSessionInfo", () => {
 
     const session = await odooGetSessionInfo("expired_token", { fetchImpl: mockFetch });
     expect(session).toBeNull();
+  });
+
+  it("swallows errors in odooDestroySession and returns version from odooGetVersionInfo", async () => {
+    const failingFetch = vi.fn<typeof fetch>().mockRejectedValueOnce(new Error("offline"));
+    await expect(
+      odooDestroySession("sid_1", { fetchImpl: failingFetch })
+    ).resolves.toBeUndefined();
+
+    const versionFetch = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      createJsonResponse({
+        jsonrpc: "2.0",
+        id: 1,
+        result: { server_version: "18.0", protocol_version: 1 },
+      })
+    );
+    await expect(odooGetVersionInfo({ fetchImpl: versionFetch })).resolves.toEqual({
+      server_version: "18.0",
+      protocol_version: 1,
+    });
   });
 });

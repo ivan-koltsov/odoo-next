@@ -1,23 +1,8 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { odooCall } from "@/lib/odoo/client";
 import { clearSessionCookie, getSessionId } from "@/lib/odoo/session";
 import { isOdooSessionExpiredError, toApiErrorResponse } from "@/lib/odoo/errors";
-
-const callSchema = z.object({
-  model: z
-    .string()
-    .trim()
-    .min(1)
-    .regex(/^[a-z0-9_.]+$/i, "Invalid Odoo model name"),
-  method: z
-    .string()
-    .trim()
-    .min(1)
-    .regex(/^[a-z0-9_]+$/i, "Invalid Odoo method name"),
-  args: z.array(z.unknown()).optional().default([]),
-  kwargs: z.record(z.string(), z.unknown()).optional().default({}),
-});
+import { formatZodError, rpcCallSchema } from "@/lib/odoo/validation";
 
 export async function POST(request: Request) {
   const sessionId = await getSessionId();
@@ -30,14 +15,11 @@ export async function POST(request: Request) {
 
   try {
     const rawBody = await request.json().catch(() => null);
-    const parsed = callSchema.safeParse(rawBody);
+    const parsed = rpcCallSchema.safeParse(rawBody);
 
     if (!parsed.success) {
       return NextResponse.json(
-        {
-          error: parsed.error.issues[0]?.message || "Invalid JSON-RPC payload",
-          code: "INVALID_REQUEST",
-        },
+        formatZodError(parsed.error, "Invalid JSON-RPC payload"),
         { status: 400 }
       );
     }
