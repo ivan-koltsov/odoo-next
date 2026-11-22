@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+set -eu
+
+echo "Running pre-commit checks..."
+
+echo "-> Running tests (npm test)..."
+npm test
+
+echo "-> Checking production build (npm run build)..."
+npm run build
+
+echo "Pre-commit checks passed."
