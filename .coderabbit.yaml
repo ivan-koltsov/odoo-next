@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: "en-US"
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  collapse_walkthrough: false
+
+  path_filters:
+    - "!package-lock.json"
+    - "!.next/**"
+    - "!coverage/**"
+    - "!next-env.d.ts"
+    - "!**/*.tsbuildinfo"
+
+  path_instructions:
+    - path: "src/app/api/**"
+      instructions: |
+        - Validate all request bodies and query parameters with zod.
+        - Ensure authenticated routes verify the Odoo HttpOnly session cookie before calling Odoo.
+        - Use structured error classes from src/lib/odoo/errors.ts and never leak raw stack traces or credentials.
+        - Keep model/field allowlists strict in /api/odoo/image and generic RPC endpoints.
+    - path: "src/lib/odoo/**"
+      instructions: |
+        - Always pass explicit fields, limit, and offset to search_read calls to avoid unbounded queries.
+        - Keep odoo_session_id strictly server-side (HttpOnly, SameSite=Lax cookie); never log raw cookies or credentials.
+        - Keep shared Odoo model interfaces in src/lib/odoo/types.ts.
+    - path: "src/components/**"
+      instructions: |
+        - Never call Odoo directly from client components; all calls must go through same-origin /api/odoo/* routes or Server Components.
+        - Prefer Server Components by default; only add "use client" when interactivity or browser APIs are required.
+        - Avoid `any` and unsafe casts under strict TypeScript.
+    - path: "src/app/(dashboard)/**"
+      instructions: |
+        - Ensure protected dashboard routes remain guarded by requireSession().
+    - path: "src/__tests__/**"
+      instructions: |
+        - Check that new Odoo client logic, services, and error/edge cases have focused Vitest unit test coverage.
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "main"
+      - "dev"
+
+chat:
+  auto_reply: true
