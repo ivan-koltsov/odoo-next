@@ -1,0 +1,48 @@
+# Keeps the Render free-tier services (odoo-next-dev + odoo-next-odoo) awake.
+#
+# Render spins down free web services after ~15 min without traffic, and a cold
+# Odoo start takes 50-90s. Pinging every 10 minutes prevents that.
+#
+# Free-tier budget: Render gives 750 free instance-hours per workspace per month,
+# shared by ALL free services in it. Two services awake 24/7 would need ~1,490h,
+# so we only keep them warm on weekdays during working hours:
+#   06:00-17:59 UTC Mon-Fri = 08:00-19:59 EET (09:00-20:59 EEST)
+#   ~12h x 23 days x 2 services ≈ 550h/month.
+# Outside that window they sleep and wake on the first request.
+#
+# Note: GitHub only runs scheduled workflows from the default branch, and may
+# delay runs by a few minutes under load.
+
+name: Render keep-alive
+
+on:
+  schedule:
+    - cron: "*/10 6-17 * * 1-5"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: render-keep-alive
+  cancel-in-progress: false
+
+env:
+  ODOO_URL: https://odoo-next-odoo.onrender.com/web/health
+  WEB_URL: https://odoo-next-dev.onrender.com/api/health
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Ping Odoo
+        run: |
+          curl --fail --silent --show-error --max-time 120 \
+            --retry 3 --retry-delay 10 --retry-all-errors \
+            -o /dev/null -w "Odoo: HTTP %{http_code} in %{time_total}s\n" "$ODOO_URL"
+
+      - name: Ping web app
+        run: |
+          curl --fail --silent --show-error --max-time 120 \
+            --retry 3 --retry-delay 10 --retry-all-errors \
+            -w "\nWeb: HTTP %{http_code} in %{time_total}s\n" "$WEB_URL"
