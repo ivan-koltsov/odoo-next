@@ -1,0 +1,27 @@
+# Dependencies & build output
+node_modules
+.next
+out
+build
+coverage
+*.tsbuildinfo
+
+# Git & local tooling
+.git
+.gitignore
+.githooks
+.coderabbit.yaml
+.DS_Store
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs & local data
+*.log
+odoo-data
+postgres-data
+docker-compose*.yml
+Dockerfile*
+README.md

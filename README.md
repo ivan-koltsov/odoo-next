@@ -116,3 +116,18 @@ src/
 2. **Create a Service**: Add `src/lib/odoo/services/orders.ts` using `odooCall("sale.order", "search_read", ...)` with explicit `fields`, `limit`, and `offset`.
 3. **Expose Route Handlers (if client-driven)**: Add `src/app/api/odoo/orders/route.ts` validated with `zod`.
 4. **Build the UI**: Add a page under `src/app/(dashboard)/orders/page.tsx` (automatically protected by `requireSession()` in `(dashboard)/layout.tsx`) and register the link in `src/components/layout/app-shell.tsx`.
+
+## Self-Hosted Docker Deployment (Full Stack)
+
+Deploy **Next.js 16 (`output: "standalone"`) + Odoo 18 + PostgreSQL 16** together on any Docker host:
+
+```bash
+cp .env.production.example .env.prod
+# Edit .env.prod and set a strong POSTGRES_PASSWORD
+
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+```
+
+- **Next.js app**: exposed on `WEB_PORT` (default `3000`). Place behind an HTTPS reverse proxy (Caddy, Nginx, Traefik) in production so `Secure` session cookies work over non-localhost domains.
+- **Odoo 18**: bound to `127.0.0.1:8069` only (private Docker network `http://odoo:8069` for Next.js BFF; use an SSH tunnel for initial DB creation on a remote server).
+- **Health check**: `GET /api/health` verifies both Next.js and Odoo connectivity.
